@@ -33,7 +33,7 @@
 【主な機能（現時点）】
   - 📝入力タブ：対局日・対局相手（星取の対局者名ボタンか手入力）・新星の手合い
       （相手の手合いは自動表示）・結果（勝ち／負け／無勝負）・決着（中押し／目数差／
-      時間切れ／ジコ（黒勝ち）／不明）・目数差（「差は不明」にもできる）・
+      時間切れ／ジコ（黒勝ち）／判定）・目数差（「差は不明」にもできる）・
       棋譜URL（①つぶや棋譜・②棋譜見てね。igo.htmlと同じ kifuUrl / kifuUrl2）・メモ（任意）
       無勝負は勝敗がつかない対局（決着・目数差は入力しない。勝率には数えない）。
       ジコ（黒勝ち）は、黒番の勝ちとして扱う（新星の結果と手合いが合わないと登録できない。
@@ -45,8 +45,9 @@
       もう一度押すか「すべて」で全件に戻る）と「📄棋譜ありのみ」ボタンで絞り込める。絞り込みに合わせて、
       ①最近の流れ（○×。古い順に左から）②決着内容の内訳（折りたたみ。初期状態は閉じていて、開閉は
       再描画しても保たれる。中押し・目数差〔うち半目・うち負けの10目差以内／以上〕・時間切れ・ジコ・
-      無勝負・不明）③対局履歴、を表示する。相手別成績は、相手別ボタンがあるため出さない。
-      無勝負は、最近の流れには入れず、決着内容には数える
+      判定・無勝負）③対局履歴、を表示する。相手別成績は、相手別ボタンがあるため出さない。
+      無勝負は、最近の流れでは「ー」で表示し（勝敗には数えない）、決着内容には数える。
+      （以前あった決着「不明」は選択肢から外した。過去に登録済みの「不明」の対局は、表示・集計には残る）
       （修正は入力タブに内容を読み込んで「更新する」）
   - ⚙️設定タブ：新星の名前の登録、データエクスポート（JSON）
 
@@ -217,7 +218,7 @@
           <option value="moku">目数差</option>
           <option value="jikan">時間切れ</option>
           <option value="jigo">ジコ（黒勝ち）</option>
-          <option value="fumei">不明</option>
+          <option value="hantei">判定</option>
         </select>
       </div>
 
@@ -429,7 +430,7 @@ function loadForEdit(id) {
   $("f-date").value = g.date || todayISO();
   $("f-opp").value = g.opponent || "";
   $("f-teai").value = g.teai || "互先"; $("teai-pair").textContent = TEAI_PAIR[g.teai || "互先"] || "互先";
-  $("f-type").value = g.type || "fumei";
+  $("f-type").value = g.type === "fumei" ? "hantei" : (g.type || "chuoshi"); // 以前の「不明」は選択肢から外したため、修正時は「判定」を仮に選ぶ（保存前に確認してください）
   const unknown = g.type === "moku" && !g.margin;
   $("f-margin-unknown").checked = unknown;
   $("f-margin").disabled = unknown;
@@ -485,7 +486,7 @@ $("f-submit").addEventListener("click", () => {
 
 // ---------- 履歴 ----------
 let oppFilter = null; // 履歴の対局相手の絞り込み（null＝すべて）
-const TYPE_LABEL = { chuoshi: "中押し", moku: "目数差", jikan: "時間切れ", jigo: "ジコ（黒勝ち）", fumei: "不明" };
+const TYPE_LABEL = { chuoshi: "中押し", moku: "目数差", jikan: "時間切れ", jigo: "ジコ（黒勝ち）", hantei: "判定", fumei: "不明" };
 const BAND_LABEL = { within10: "10目差以内", over10: "10目差以上", unknown: "10目差の判別なし" };
 function fmtDate(iso) { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}/${parseInt(m)}/${parseInt(d)}`; }
 function resultText(g) {
@@ -495,13 +496,15 @@ function resultText(g) {
 let decisionOpen = false; // 決着内容の折りたたみの開閉（再描画しても保つ）
 let kifuOnly = false; // 履歴：棋譜ありの対局だけに絞り込む
 function secHead(t) { return `<h4 style="border-left:4px solid #b89752;padding-left:8px;color:#2c3e50;margin:18px 0 10px;font-size:0.95rem">${t}</h4>`; }
-// 最近の流れ（○勝ち・×負け。古い順に左から並べる。無勝負は入れない）
+// 最近の流れ（○勝ち・×負け・ー無勝負。古い順に左から並べる）
 function flowHTML(list) {
-  const decided = list.filter(([, g]) => g.result === "win" || g.result === "lose");
-  if (!decided.length) return '<span style="color:#999">—</span>';
-  return [...decided].reverse().map(([, g]) => g.result === "win"
+  const shown = list.filter(([, g]) => g.result === "win" || g.result === "lose" || g.result === "mushoubu");
+  if (!shown.length) return '<span style="color:#999">—</span>';
+  return [...shown].reverse().map(([, g]) => g.result === "win"
     ? '<span style="color:#2c3e50;font-size:1.1rem;font-weight:bold;margin-right:2px">○</span>'
-    : '<span style="color:#e74c3c;font-size:1.1rem;font-weight:bold;margin-right:2px">×</span>').join("");
+    : g.result === "lose"
+      ? '<span style="color:#e74c3c;font-size:1.1rem;font-weight:bold;margin-right:2px">×</span>'
+      : '<span style="color:#888;font-size:1.1rem;font-weight:bold;margin-right:2px">ー</span>').join("");
 }
 function wlOf(list) {
   let w = 0, l = 0;
@@ -513,7 +516,7 @@ function wlText(list) { const { w, l } = wlOf(list); return `${w}勝 ${l}敗`; }
 function decisionHTML(list) {
   if (!list.length) return '<p style="color:#999;font-size:0.88rem">対局記録なし</p>';
   const by = t => list.filter(([, g]) => g.type === t && g.result !== "mushoubu");
-  const chuoshi = by("chuoshi"), moku = by("moku"), jikan = by("jikan"), jigo = by("jigo"), fumei = by("fumei");
+  const chuoshi = by("chuoshi"), moku = by("moku"), jikan = by("jikan"), jigo = by("jigo"), hantei = by("hantei"), fumei = by("fumei");
   const mush = list.filter(([, g]) => g.result === "mushoubu");
   const sub = (label, arr, withWl) => arr.length
     ? `<div style="padding-left:16px;color:#777;font-size:0.82rem">うち${label}　${arr.length}局${withWl ? `（${wlText(arr)}）` : ""}</div>` : "";
@@ -532,6 +535,7 @@ function decisionHTML(list) {
   }
   h += `<div>時間切れ　${jikan.length}局　（${wlText(jikan)}）</div>`;
   if (jigo.length) h += `<div>ジコ（黒勝ち）　${jigo.length}局　（${wlText(jigo)}）</div>`;
+  if (hantei.length) h += `<div>判定　${hantei.length}局　（${wlText(hantei)}）</div>`;
   h += `<div>無勝負　${mush.length}局</div>`;
   if (fumei.length) h += `<div>不明　${fumei.length}局　（${wlText(fumei)}）</div>`;
   return h + "</div>";
