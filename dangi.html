@@ -1,0 +1,293 @@
+<!--
+================================================================================
+  このアプリについて
+  囲碁読み物 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  囲碁に関する読み物を収録するページ。
+  生成AIとの対話から生まれた文章や、囲碁にまつわる考察を掲載する。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 dangi.html で完結）
+  - index.htmlからリンク
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（表示回数のカウントにのみ使用。他アプリと同じ
+      プロジェクトを使用）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - 新技術の導入より、継続して利用しやすい構成を優先する
+
+【セキュリティ】
+  - 合言葉認証あり（goroku.htmlと同じ合言葉）
+  - 認証情報はブラウザのlocalStorageに保存される
+
+【共同編集の進め方】
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読み物を追加・変更したら「収録コンテンツ」を合わせて更新する
+
+【収録コンテンツ（現時点）】
+  - 生成AIとの対話から生まれた囲碁談義
+
+【主な機能（現時点）】
+  - 表示回数（ヘッダーに常時表示。個人アカウントが無いため「誰が見たか」は分からない
+      参考値で、同じ端末では1日1回までしかカウントされない。?group=に関わらず
+      全体で1つのカウント。Firebase pageviews/dangi に保存し、
+      igo.html/mahjong.html/goroku.html/dangi.html それぞれ独立にカウント）
+
+【今後の改良候補】
+  - 読み物の追加
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>囲碁読み物</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html { background: #fcfaf2; }
+    body {
+      margin: 0; padding: 0;
+      font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+      background: #fcfaf2;
+      color: #333;
+    }
+    #app { max-width: 500px; margin: 0 auto; min-height: 100vh; background: #fcfaf2; }
+
+    /* ヘッダー */
+    #header {
+      background: #7a5c3a; color: #fdf5e8;
+      padding: 14px 18px 16px;
+      position: sticky; top: 0; z-index: 101;
+    }
+    #header h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.05em; color: #fdf5e8; }
+    #header-sub { font-size: 0.78rem; color: #c8a87a; margin: 3px 0 0; font-family: sans-serif; }
+    #pageview-row { font-size: 0.68rem; color: #c8a87a; margin: 3px 0 0; font-family: sans-serif; }
+
+    /* コンテンツ */
+    #content { padding: 16px; }
+
+    /* アコーディオン */
+    .piece-toggle {
+      width: 100%; border: 1px solid #e0dbcd;
+      border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 8px; display: flex;
+      justify-content: space-between; align-items: center;
+      cursor: pointer; background: #fff; text-align: left;
+      font-family: inherit; transition: 0.2s;
+    }
+    .piece-toggle.open { border-radius: 10px 10px 0 0; margin-bottom: 0; }
+    .piece-toggle-label {
+      font-size: 0.68rem; letter-spacing: 0.05em;
+      font-family: sans-serif; color: #c8a87a; margin-bottom: 3px;
+    }
+    .piece-toggle-title { font-size: 0.95rem; font-weight: bold; color: #2c3e50; }
+    .piece-toggle-sub { font-size: 0.74rem; color: #888; margin-top: 3px; }
+    .piece-arrow { font-size: 0.85rem; color: #c8a87a; transition: transform 0.2s; flex-shrink: 0; margin-left: 10px; }
+    .piece-toggle.open .piece-arrow { transform: rotate(90deg); }
+
+    .piece-body {
+      display: none;
+      background: #fff; border: 1px solid #e0dbcd;
+      border-top: none; border-radius: 0 0 10px 10px;
+      margin-bottom: 14px; padding: 16px;
+    }
+    .piece-body.open { display: block; }
+
+    /* 読み物本文 */
+    .piece-lead {
+      font-size: 0.8rem; color: #888; font-family: sans-serif;
+      margin: 0 0 14px; line-height: 1.6;
+      padding-bottom: 12px; border-bottom: 1px solid #f0ede4;
+    }
+
+    .dangi-item {
+      padding: 12px 0;
+      border-bottom: 1px solid #f0ede4;
+    }
+    .dangi-item:last-child { border-bottom: none; padding-bottom: 0; }
+
+    .dangi-thesis {
+      font-size: 0.92rem; font-weight: bold;
+      color: #2c3e50; line-height: 1.6;
+      border-left: 3px solid #e8c040;
+      padding-left: 10px; margin-bottom: 6px;
+    }
+    .dangi-reason {
+      font-size: 0.82rem; color: #666;
+      line-height: 1.7; padding-left: 13px;
+    }
+
+    .piece-closing {
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid #f0ede4;
+      font-size: 0.82rem; color: #555;
+      line-height: 1.8; font-style: normal;
+      border-left: 3px solid #e0dbcd;
+      padding-left: 10px;
+    }
+
+    /* トースト */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #2c3e50; color: #fff; padding: 10px 20px;
+      border-radius: 20px; font-size: 0.83rem; font-family: sans-serif;
+      display: none; z-index: 999; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
+
+<div id="app">
+
+  <div id="header">
+    <h1>囲碁読み物</h1>
+    <div id="header-sub">考える、感じる、そして打つ。</div>
+    <div id="pageview-row">👁 <span id="pageview-count">－</span>回表示</div>
+  </div>
+
+  <div id="content">
+
+    <!-- 読み物1：囲碁談義 -->
+    <button class="piece-toggle" data-id="dangi">
+      <div>
+        <div class="piece-toggle-label">生成AIとの対話から</div>
+        <div class="piece-toggle-title">囲碁談義</div>
+        <div class="piece-toggle-sub">囲碁上達の秘訣を考える</div>
+      </div>
+      <span class="piece-arrow">▶</span>
+    </button>
+    <div class="piece-body" data-id="dangi">
+      <div class="piece-lead">生成AIとの対話から生まれた、囲碁上達についての逆説的な考察。</div>
+
+      <div class="dangi-item">
+        <div class="dangi-thesis">強くなりたいなら、好みの打ち方を疑う。</div>
+        <div class="dangi-reason">なぜなら、局面が求める手と、自分が打ちたい手は同じとは限らないから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">自由に打ちたいなら、基本を学ぶ。</div>
+        <div class="dangi-reason">なぜなら、知らない選択肢は選ぶことも捨てることもできないから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">次の一手に迷ったら、まず情勢判断をする。</div>
+        <div class="dangi-reason">なぜなら、石の強弱や力関係が分かれば、どこで戦うべきかが見えてくるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">大局観を養いたいなら、小さな差を大切にする。</div>
+        <div class="dangi-reason">なぜなら、大局は小さな価値の積み重ねによって形づくられるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">良い形を求めるなら、形より働きを見る。</div>
+        <div class="dangi-reason">なぜなら、石の価値は見た目ではなく、局面への貢献によって決まるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">感覚を磨きたいなら、まず読む。</div>
+        <div class="dangi-reason">なぜなら、確かな感覚は経験と読みによって育てられるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">大きな構想を描きたいなら、形勢を知る。</div>
+        <div class="dangi-reason">なぜなら、現在地が分からなければ進むべき方向も定まらないから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">局面を動かしたいなら、まず相手に委ねる。</div>
+        <div class="dangi-reason">なぜなら、相手の狙いを正しく受け止めてこそ、自分の打つべき手が見えてくるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">自分らしい碁を打ちたいなら、自分らしさにこだわりすぎない。</div>
+        <div class="dangi-reason">なぜなら、盤上が求める手を受け入れた先に、その人らしさは自然に現れるから。</div>
+      </div>
+      <div class="dangi-item">
+        <div class="dangi-thesis">勝ちにこだわりたくないなら、まず勝ちを目指す。</div>
+        <div class="dangi-reason">なぜなら、本気で勝とうとして初めて、負けから学ぶことができるから。</div>
+      </div>
+
+      <div class="dangi-item">
+        <div class="dangi-thesis">美しい碁を打とうとするより、良い手を打とうとする。</div>
+        <div class="dangi-reason">なぜなら、美しさは目的ではなく、一手一手を積み重ねた先に現れる結果だから。</div>
+      </div>
+    </div>
+
+    <!-- 読み物はここに追加 -->
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+document.querySelectorAll(".piece-toggle").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.id;
+    const body = document.querySelector(`.piece-body[data-id="${id}"]`);
+    btn.classList.toggle("open");
+    body.classList.toggle("open");
+  });
+});
+
+// ---------- 表示回数 ----------
+// 個人アカウントがないため「誰が見たか」は分からない。あくまで「このアプリが
+// 開かれた回数」の目安（?group=に関わらず全体で1つのカウント）。
+// 同じ端末では1日1回までしかカウントされない（localStorageに最後にカウントした
+// 日付を保存して判定）。他アプリと同じFirebaseプロジェクトを使用する。
+(function() {
+  const firebaseConfig = {
+    apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+    authDomain:        "hiking-558a9.firebaseapp.com",
+    databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+    projectId:         "hiking-558a9",
+    storageBucket:     "hiking-558a9.firebasestorage.app",
+    messagingSenderId: "1066293850319",
+    appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+  };
+  const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+  if (!isConfigured) return;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const pvRef = firebase.database().ref("pageviews/dangi");
+    const today = new Date();
+    const pad2 = n => String(n).padStart(2, "0");
+    const todayStr = `${today.getFullYear()}-${pad2(today.getMonth()+1)}-${pad2(today.getDate())}`;
+    if (localStorage.getItem("pageview_date_dangi") !== todayStr) {
+      pvRef.transaction(cur => (cur || 0) + 1, (error, committed) => {
+        if (error) { console.error("表示回数の記録に失敗しました:", error); return; }
+        if (committed) localStorage.setItem("pageview_date_dangi", todayStr);
+      });
+    }
+    pvRef.on("value", snap => {
+      const el = document.getElementById("pageview-count");
+      if (el) el.textContent = snap.val() || 0;
+    });
+  } catch(e) { console.error("Firebase init failed:", e); }
+})();
+</script>
+</body>
+</html>

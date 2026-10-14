@@ -15,7 +15,7 @@
   - 各アプリへのリンクを管理する
 
 【技術構成】
-  - 純粋なHTML/CSS（JavaScriptなし）
+  - 純粋なHTML/CSS（JavaScriptなし）。リンクだけを並べる
   - 外部ライブラリなし・ビルド不要・1ファイル完結
   - シンプルさを最優先とする
 
@@ -34,9 +34,19 @@
 【収録アプリ（現時点）】
   - 開催日程（yotei-shinsei.html）：碁会などの予定・実績と、参加表明
   - 新星の対局記録（shinsei.html）：対局日・手合い・結果・目数差の記録と履歴
+  - 棋譜あるき（kifu.html）：仲間に観てほしい棋譜のURL共有・感想（山あるきと共通のデータ）
+  - 囲碁 一局一得（goroku.html）：対局前に考え、対局後に学ぶアプリ（?group=shinsei で、しおりは
+      この会だけで共有。山あるきとは別）
+  - 囲碁読み物（dangi.html）：囲碁にまつわる読み物・考察
 
-  メニューは上から、開催日程 → 対局記録の順に並べる（日程は一番上）。
-  アプリを追加したら、カードを足す。
+  メニューは、グループ見出し＋3列のタイル（アイコン＋短い名称）で並べる。説明文は置かない
+  （縦スクロールを減らすため。山あるきのindex.htmlと同じ作り）。グループ構成：
+    会の活動（開催日程・対局記録）／囲碁をみがく（棋譜あるき・一局一得・囲碁読み物）
+  開催日程は一番上・先頭に置く。アプリを追加したら、いずれかのグループにタイルを足す。
+  タイルの名称は6文字前後に収める。
+
+  タイトル下の一言は「一局ずつ、いっしょに伸びていこう」。新星本人も読むため、
+  「見守る」のような、見る側・見られる側が分かれる言い方は避けている。
 
 【今後の改良候補】
   - 新星の成長の軌跡（月ごとの記録）ページの追加
@@ -83,37 +93,53 @@
       font-size: 0.92rem;
     }
 
-    .card {
-      display: block;
+    .group-title {
+      font-size: 0.78rem;
+      color: #7a5c3a;
+      letter-spacing: 0.05em;
+      border-left: 4px solid #b89752;
+      padding-left: 8px;
+      margin: 14px 0 6px;
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 64px;
+      padding: 6px 4px;
       text-decoration: none;
       background: #fff;
       border: 1px solid #e0dbcd;
       border-radius: 12px;
-      padding: 18px;
-      margin-bottom: 14px;
       color: inherit;
       transition: 0.2s;
     }
 
-    .card:active {
-      transform: scale(0.98);
+    .tile:active {
+      transform: scale(0.96);
     }
 
-    .title {
-      font-size: 1.08rem;
+    .tile-icon { font-size: 1.4rem; line-height: 1; }
+
+    .tile-name {
+      font-size: 0.8rem;
       font-weight: bold;
       color: #2c3e50;
-      margin-bottom: 6px;
-    }
-
-    .desc {
-      font-size: 0.88rem;
-      color: #666;
-      line-height: 1.5;
+      text-align: center;
+      line-height: 1.3;
     }
 
     .footer {
-      margin-top: 34px;
+      margin-top: 24px;
       text-align: center;
       color: #999;
       font-size: 0.8rem;
@@ -127,24 +153,36 @@
   <h1>🌟 埼玉県庁の<br>新星を育てる会</h1>
 
   <div class="sub">
-    みんなで新星の成長を見守ろう
+    一局ずつ、いっしょに伸びていこう
   </div>
 
-  <a class="card" href="yotei-shinsei.html">
-    <div class="title">📅 開催日程</div>
-    <div class="desc">
-      碁会などの予定と実績。<br>
-      参加表明（⚪／△／✕）もここから。
-    </div>
-  </a>
+  <div class="group-title">会の活動</div>
+  <div class="tile-grid">
+    <a class="tile" href="yotei-shinsei.html">
+      <span class="tile-icon">📅</span>
+      <span class="tile-name">開催日程</span>
+    </a>
+    <a class="tile" href="shinsei.html">
+      <span class="tile-icon">⚫</span>
+      <span class="tile-name">対局記録</span>
+    </a>
+  </div>
 
-  <a class="card" href="shinsei.html">
-    <div class="title">⚫ 新星の対局記録</div>
-    <div class="desc">
-      対局日・手合い・結果・目数差を記録。<br>
-      これまでの対局の履歴もまとめて確認。
-    </div>
-  </a>
+  <div class="group-title">囲碁をみがく</div>
+  <div class="tile-grid">
+    <a class="tile" href="kifu.html?v=3">
+      <span class="tile-icon">👣</span>
+      <span class="tile-name">棋譜あるき</span>
+    </a>
+    <a class="tile" href="goroku.html?group=shinsei">
+      <span class="tile-icon">📖</span>
+      <span class="tile-name">一局一得</span>
+    </a>
+    <a class="tile" href="dangi.html">
+      <span class="tile-icon">📝</span>
+      <span class="tile-name">囲碁読み物</span>
+    </a>
+  </div>
 
   <div class="footer">
     GitHub Pages + Firebase
