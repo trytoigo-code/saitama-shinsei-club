@@ -15,8 +15,8 @@
   - スマホ利用を最優先とする（モバイルファースト）
   - GitHub Pages でホスティング（単一 shinsei.html で完結）
   - Firebase Realtime Database（igo.htmlなどと同じプロジェクト）
-    保存先：shinsei/games（対局）・shinsei/config（新星の名前）。
-    go-league/state/players は読み取りのみ（対局相手の名前候補、および相手の識別）。
+    保存先：shinsei/games（対局）・shinsei/config（新星の名前・初期レーティング initialRating）。
+    go-league/state は読み取りのみ（対局相手の名前候補・相手の識別・相手のレートの計算）。
     対局相手は、星取の対局者の並び（players配列）の番号 opponentIdx（0〜）でも記録する。
     星取の設定タブは「枠に名前を入れる」作りで、改名しても同じ枠のままなので、番号をIDの代わりに使える。
     表示は常に星取の「今の名前」を引くため、星取で改名しても新星の履歴が切れない。
@@ -54,15 +54,29 @@
       無勝負は、最近の流れでは「ー」で表示し（勝敗には数えない）、決着内容には数える。
       （以前あった決着「不明」は選択肢から外した。過去に登録済みの「不明」の対局は、表示・集計には残る）
       （修正は入力タブに内容を読み込んで「更新する」）
-  - ⚙️設定タブ：新星の名前の登録、星取の対局者との紐づけ、データエクスポート（JSON）
+  - レーティング（参考値）：新星のレートだけを動かす（相手のレートは動かさない）。星取（igo.html）と
+      同じElo方式。履歴タブに折りたたみで、現在のレート・推移グラフ・3か月ごとの表・仕組みの説明を表示し、
+      各対局カードに「レート +12 → 1512」を表示する。
+      表は3か月ごと（1〜3月・4〜6月・7〜9月・10〜12月。碁会が月1回のため）にまとめる。保存はせず、表示のたびに全履歴から計算し直す。
+      ・相手のレート：対局の登録時点の星取のレートを oppRating として保存して使う（シーズンが替わっても、
+        相手が上達しても、過去の対局の評価が動かないようにするため）。oppRating が無い対局は、星取の
+        今のレートで補い（推定）、設定タブのボタンで一括して保存できる。
+      ・星取のレートは、igo.html/sogo.html と同じ計算をこのファイルに複製して求める
+        （手合い差の重みは標準×1。igo.html側が変わったらここも更新する）。
+      ・手合いの換算：互先0／先50／2子150／3子250／4子350（星取と同じ）。5子以降は1子ごとに100点延ばした
+        仮置き（5子450〜9子850）。互白・互黒は互先と同じ0。
+      ・1局で動く幅：最初の20局は最大40点、以降は最大24点。30局未満は「暫定」。
+      ・数えない対局：無勝負、相手が星取の対局者でない対局。
+      ・初期レーティング：設定タブで変更できる（未設定は1500）。変更すると全対局が計算し直される。
+  - ⚙️設定タブ：新星の名前の登録、初期レーティング、星取の対局者との紐づけ、データエクスポート（JSON）
       星取の対局者との紐づけ：これまでの対局に opponentIdx を一括で保存する。名前が一致するものは
       ボタン1つで紐づけ、一致しないもの（改名・表記ゆれ）は相手ごとに星取の対局者を選んで紐づける。
       星取にいない相手は、そのままでよい（紐づけなくても履歴・成績は今までどおり使える）。
       紐づけを保存していなくても、名前が星取の今の名前と完全一致する対局は、画面上は紐づいているものとして扱う
 
 【今後の改良候補】
-  - レーティング（参考値）：相手の星取のレートを使って、新星のレートだけを動かす。
-      相手の識別は opponentIdx を使う（登録時点の相手のレートを保存する案Aが有力）
+  - レーティングの手合い換算（特に5子以降）・Kの値を、実データで調整する
+  - 星取側の改名時に履歴の名前も書き換える処理（igo.html側）。星取のレートの次シーズンへの持ち越し
   - 手合いや月ごとの成績の集計
   - 月例碁会ごとの「今月見えた力・前回との違い・次に期待すること」の記録
   - 星取の対局との紐づけ・棋譜URLの登録
@@ -158,6 +172,10 @@
   .fold > summary::before { content: "▶ "; font-size: 0.65rem; color: #b89752; }
   .fold[open] > summary::before { content: "▼ "; }
   .fold[open] > summary { margin-bottom: 10px; }
+  .rate-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 10px 0 6px; background: #faf9f5; }
+  .rate-table th, .rate-table td { border: 1px solid #ddd8cc; padding: 6px 5px; text-align: center; white-space: nowrap; }
+  .rate-table th { background: #f1f0ea; color: #2c3e50; font-size: 0.72rem; }
+  .rate-line { font-size: 0.74rem; color: #888; margin-top: 4px; }
 
   #setup-banner { display: none; background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem; line-height: 1.7; }
   #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #2c3e50; color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 0.85rem; display: none; z-index: 999; white-space: nowrap; }
@@ -276,6 +294,7 @@
       </details>
       <div id="hist-opp-chips" style="margin:0 0 12px"></div>
       <div id="summary"></div>
+      <div id="rating-box"></div>
       <div id="hist-sections"></div>
       <div id="list"></div>
     </div>
@@ -289,6 +308,15 @@
         <p class="note" style="margin:6px 0 0">入力・履歴に「〇〇 vs 相手」と表示されます。未設定のときは「新星」と表示します。</p>
       </div>
       <button class="btn" id="s-save" style="background:#b89752">名前を保存して同期</button>
+
+      <h3 style="margin-top:28px">レーティング（参考値）</h3>
+      <div class="fg">
+        <label>新星の初期レーティング</label>
+        <input id="s-init-rating" type="number" step="1" inputmode="numeric" placeholder="1500">
+        <p class="note" style="margin:6px 0 0">最初の対局の前の値です。空欄なら1500。目安の決め方：最初の頃、どのくらいの手合いで互角に近かったかを考えます。たとえば相手が約1500の人と5子で互角なら、1500−450＝約1050。1500のままだと、最初の手合いが重いほど、負けたときの下がり方が大きくなります。変更すると、全対局のレートが計算し直されます。</p>
+      </div>
+      <button class="btn" id="s-init-save" style="background:#b89752">初期レーティングを保存して同期</button>
+      <div id="rating-freeze" style="margin-top:14px"></div>
 
       <h3 style="margin-top:28px">星取の対局者との紐づけ</h3>
       <p class="note">対局相手を、星取の対局者の番号で記録します。星取で改名しても、新星の履歴が切れなくなります。星取にいない相手は、紐づけなくてもそのまま使えます。紐づけの前に、下の「JSONでダウンロード」でバックアップを取っておくと安心です。</p>
@@ -322,6 +350,8 @@ let games = {}, shinseiName = "";
 // 星取の対局者（go-league/state/players）。番号（配列の位置）をそのまま保つ。空き枠は ""
 let goRaw = [];
 let oppIdx = null; // 入力中の対局相手の星取での番号（星取にいない相手・未選択は null）
+let shinseiInit = null, editingInit = false; // 新星の初期レーティング（未設定は null＝1500）
+let starRatings = {}, starLoaded = false;    // 星取のレーティング（名前→{rating,games,provisional}）。読み取り専用
 let gamesRef = null, configRef = null;
 let editingId = null;
 let resultVal = null; // "win" | "lose" | null
@@ -529,7 +559,15 @@ $("f-submit").addEventListener("click", () => {
   const k1 = $("f-kifu1").value.trim(), k2 = $("f-kifu2").value.trim();
   const okUrl = u => /^https?:\/\//.test(u);
   if ((k1 && !okUrl(k1)) || (k2 && !okUrl(k2))) { alert("棋譜URLは http〜 で始まるものを入力してください"); return; }
-  const data = { date, opponent: (oppIdx != null && goRaw[oppIdx]) || opp, opponentIdx: oppIdx, teai, result: resultVal, type, margin, band, kifuUrl: k1 || null, kifuUrl2: k2 || null, memo: $("f-memo").value.trim() || null };
+  // 登録時点の相手の星取レートを保存する（シーズンが替わっても、相手が上達しても、過去の対局の評価が動かないように）。
+  // 修正のときは、同じ相手なら元の値を保つ（保存していなかった対局は、今のレートの推定のまま）
+  let oppRating = null;
+  if (oppIdx != null && goRaw[oppIdx] && starLoaded) {
+    const old = editingId ? games[editingId] : null;
+    if (old && effIdx(old) === oppIdx) oppRating = typeof old.oppRating === "number" ? old.oppRating : null;
+    else { const sr = starRatings[goRaw[oppIdx]]; oppRating = Math.round(sr ? sr.rating : ST_BASE); }
+  }
+  const data = { date, opponent: (oppIdx != null && goRaw[oppIdx]) || opp, opponentIdx: oppIdx, oppRating, teai, result: resultVal, type, margin, band, kifuUrl: k1 || null, kifuUrl2: k2 || null, memo: $("f-memo").value.trim() || null };
   if (!gamesRef) { alert("データベースに接続されていません"); return; }
   if (editingId) { gamesRef.child(editingId).update({ ...data, editedAt: Date.now() }); toast("更新しました"); }
   else { gamesRef.push({ ...data, at: Date.now() }); toast("対局を登録しました"); }
@@ -650,6 +688,7 @@ function renderHistory() {
           <div class="game-date">${fmtDate(g.date)}</div>
           <div class="game-vs">${win ? "👑 " : ""}<strong>${esc(nm())}</strong>${tm(mine)}　vs　${lose ? "👑 " : ""}${esc(oppName(g))}${tm(theirs)}</div>
           <div style="margin-top:4px">${badges}${kifu}</div>
+          ${rateLineHTML(id)}
         </div>
         <div class="game-btns"><button class="link-sm" data-act="edit" data-id="${id}">修正</button><button class="link-sm" data-act="del" data-id="${id}">削除</button></div>
       </div>
@@ -703,7 +742,225 @@ $("export-btn").addEventListener("click", () => {
 function applyName() {
   document.querySelector("#teai-label").textContent = `${nm()}の手合い`;
   if (!editingName) $("s-name").value = shinseiName;
+  if (!editingInit) $("s-init-rating").value = typeof shinseiInit === "number" ? shinseiInit : "";
 }
+// ============================================================
+//  レーティング（参考値）：新星のレートだけを動かす
+//  相手のレートは動かさない（星取のレートを読み取って使う）。計算は igo.html と同じ Elo 方式。
+//  ・相手のレート：登録時点の星取のレートを oppRating として保存。無い対局は、星取の「今のレート」で補う（推定）
+//  ・手合い：星取の換算（互先0／先50／2子150／3子250／4子350）を、5子以降は1子ごとに100点ずつ延ばした仮置き
+//  ・数えない対局：無勝負、相手が星取の対局者でない対局
+//  ・保存はせず、表示のたびに全履歴から計算し直す
+// ============================================================
+// ---- 星取（igo.html）のレーティング計算の複製（sogo.html と同じ。手合い差の重みは標準×1）----
+// igo.html のロジックが変わったら、ここも合わせて更新する。
+const ST_HANDICAP_ELO = [0, 50, 150, 250, 350];
+const ST_BASE = 1500, ST_PROV = 30, ST_K_SWITCH = 20, ST_K_NEW = 40, ST_K_SETTLED = 24;
+const ST_UPPER = ["向先", "向2", "向3", "向4"], ST_BLACK = ["先", "2子", "3子", "4子"];
+function stTeaiCategory(t) {
+  if (["互先", "互白", "互黒"].includes(t)) return "互先";
+  if (["先", "向先"].includes(t)) return "先";
+  if (["2子", "向2"].includes(t)) return "2子";
+  if (["3子", "向3"].includes(t)) return "3子";
+  if (["4子", "向4"].includes(t)) return "4子";
+  return null;
+}
+function stJigoWinner(m) {
+  if (ST_BLACK.includes(m.teai1)) return m.p1;
+  if (ST_BLACK.includes(m.teai2)) return m.p2;
+  return null;
+}
+function stMatchInfo(m) {
+  let teaiW;
+  if (m.type === "jigo") {
+    const jw = stJigoWinner(m);
+    if (!jw) return null;
+    teaiW = jw === m.p1 ? m.teai1 : m.teai2;
+  } else teaiW = m.teai_w;
+  const cat = stTeaiCategory(teaiW);
+  if (!cat) return null;
+  return { absLevel: cat === "互先" ? 0 : { "先": 1, "2子": 2, "3子": 3, "4子": 4 }[cat], isUpperWinner: ST_UPPER.includes(teaiW) };
+}
+function stDateVal(d) {
+  if (!d) return 0;
+  const p = String(d).split(" ")[0].split("/").map(n => parseInt(n, 10));
+  return (p.length === 3 && !p.some(isNaN)) ? p[0] * 10000 + p[1] * 100 + p[2] : 0;
+}
+function computeStarRatings(st) {
+  const names = st.players || [];
+  const r = {}, n = {};
+  names.forEach(p => { r[p] = ST_BASE; n[p] = 0; });
+  const expect = d => 1 / (1 + Math.pow(10, -d / 400));
+  const kOf = p => n[p] < ST_K_SWITCH ? ST_K_NEW : ST_K_SETTLED;
+  [...(st.history || [])].reverse().sort((a, b) => stDateVal(a.date) - stDateVal(b.date)).forEach(m => {
+    if (m.shidou || m.type === "mushoubu") return;
+    let w, l;
+    if (m.type === "jigo") { w = stJigoWinner(m); if (!w) return; l = w === m.p1 ? m.p2 : m.p1; }
+    else { w = m.winner; l = m.loser; }
+    if (!names.includes(w) || !names.includes(l)) return;
+    const info = stMatchInfo(m);
+    let wb = 0;
+    if (info) { const b = ST_HANDICAP_ELO[Math.min(info.absLevel, ST_HANDICAP_ELO.length - 1)]; wb = info.isUpperWinner ? -b : b; }
+    const miss = 1 - expect(r[w] + wb - r[l]);
+    const kw = kOf(w), kl = kOf(l);
+    r[w] += kw * miss; r[l] -= kl * miss;
+    n[w]++; n[l]++;
+  });
+  const out = {};
+  names.forEach(p => { if (n[p] > 0) out[p] = { rating: r[p], games: n[p], provisional: n[p] < ST_PROV }; });
+  return out;
+}
+
+// ---- 新星のレーティング ----
+// 5子以降は、星取の増え方（2子以降は1子ごとに約100点）を延ばした仮置きの値
+const SH_HANDICAP_ELO = [0, 50, 150, 250, 350, 450, 550, 650, 750, 850];
+// 新星から見た手合い加点：新星が下手なら＋（有利）、上手なら−（不利）。互先・互白・互黒は0
+function shHandicap(teai) {
+  const t = teai || "互先";
+  if (t === "先") return SH_HANDICAP_ELO[1];
+  if (t === "向先") return -SH_HANDICAP_ELO[1];
+  let m = /^([2-9])子$/.exec(t); if (m) return SH_HANDICAP_ELO[Number(m[1])];
+  m = /^向([2-9])$/.exec(t); if (m) return -SH_HANDICAP_ELO[Number(m[1])];
+  return 0;
+}
+function shInitial() { return typeof shinseiInit === "number" ? shinseiInit : ST_BASE; }
+// その対局の相手のレート：保存済みならそれ、無ければ星取の今のレート（推定）。相手が星取にいなければ null
+function oppRatingOf(g) {
+  if (typeof g.oppRating === "number") return { r: g.oppRating, est: false };
+  const i = effIdx(g); if (i == null) return null;
+  const sr = starRatings[goRaw[i]];
+  return { r: sr ? sr.rating : ST_BASE, est: true };
+}
+function computeShinseiRating() {
+  const list = Object.entries(games)
+    .filter(([, g]) => g.result === "win" || g.result === "lose")
+    .sort((a, b) => (a[1].date || "").localeCompare(b[1].date || "") || (a[1].at || 0) - (b[1].at || 0) || (a[0] < b[0] ? -1 : 1));
+  const start = shInitial();
+  let r = start, n = 0, skipped = 0, estimated = 0;
+  const steps = [], byId = {};
+  list.forEach(([id, g]) => {
+    const o = oppRatingOf(g);
+    if (!o) { skipped++; return; }
+    const bonus = shHandicap(g.teai);
+    const e = 1 / (1 + Math.pow(10, -((r + bonus) - o.r) / 400));
+    const k = n < ST_K_SWITCH ? ST_K_NEW : ST_K_SETTLED;
+    const win = g.result === "win";
+    const d = k * ((win ? 1 : 0) - e);
+    const step = { id, date: g.date || "", win, before: r, after: r + d, delta: d, est: o.est };
+    steps.push(step); byId[id] = step;
+    r += d; n++; if (o.est) estimated++;
+  });
+  return { start, rating: r, games: n, skipped, estimated, steps, byId };
+}
+let ratingRes = null;
+function refreshRating() { ratingRes = starLoaded ? computeShinseiRating() : null; }
+const fmtSigned = v => { const x = Math.round(v); return x > 0 ? "+" + x : x < 0 ? String(x) : "±0"; };
+function rateLineHTML(id) {
+  const st = ratingRes && ratingRes.byId[id];
+  if (!st) return "";
+  return `<div class="rate-line">レート ${fmtSigned(st.delta)} → ${Math.round(st.after)}${st.est ? "（相手のレートは推定）" : ""}</div>`;
+}
+function ratingChartSVG(res) {
+  const pts = [res.start, ...res.steps.map(s => s.after)];
+  if (pts.length < 2) return "";
+  const W = 300, H = 100, padL = 6, padR = 6, padT = 12, padB = 12;
+  let lo = Math.min(...pts), hi = Math.max(...pts);
+  if (hi - lo < 40) { const mid = (hi + lo) / 2; lo = mid - 20; hi = mid + 20; }
+  const x = i => padL + (W - padL - padR) * i / (pts.length - 1);
+  const y = v => padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo));
+  const line = pts.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const last = pts.length - 1;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;background:#faf9f5;border:1px solid #e8e4da;border-radius:6px">`
+    + `<polyline points="${line}" fill="none" stroke="#b89752" stroke-width="2"/>`
+    + `<circle cx="${x(0).toFixed(1)}" cy="${y(pts[0]).toFixed(1)}" r="2.5" fill="#999"/>`
+    + `<circle cx="${x(last).toFixed(1)}" cy="${y(pts[last]).toFixed(1)}" r="3.5" fill="#2c3e50"/>`
+    + `<text x="${padL}" y="9" font-size="9" fill="#999">${Math.round(hi)}</text><text x="${padL}" y="${H - 2}" font-size="9" fill="#999">${Math.round(lo)}</text></svg>`;
+}
+let ratingOpen = false;
+const RATING_HELP_HTML = `
+  <details class="help-details" style="margin:12px 0 0">
+    <summary>レーティングの仕組み</summary>
+    <div class="note" style="margin:6px 0 0">
+      <div>・勝敗と手合いから推定した「強さの目安」です。星取と同じ計算方法で、新星のレートだけを動かします（相手のレートは動きません）。</div>
+      <div>・勝つ確率の予想（差100点で約64%、200点で約76%）より意外な結果ほど、大きく動きます。手合いは強さの差を補うものなので、その分を換算して計算します。</div>
+      <div>・手合いの換算は、互先${SH_HANDICAP_ELO[0]}／先${SH_HANDICAP_ELO[1]}／2子${SH_HANDICAP_ELO[2]}／3子${SH_HANDICAP_ELO[3]}／4子${SH_HANDICAP_ELO[4]}点（星取と同じ）。5子以降は1子ごとに100点ずつ延ばした仮置きです（5子${SH_HANDICAP_ELO[5]}〜9子${SH_HANDICAP_ELO[9]}点）。</div>
+      <div>・1局で動く幅は、最初の${ST_K_SWITCH}局までは最大${ST_K_NEW}点、それ以降は最大${ST_K_SETTLED}点です。</div>
+      <div>・相手のレートは、対局を登録した時点の星取のレートを保存して使います。保存していない対局は、星取の今のレートで補います（推定）。</div>
+      <div>・数えない対局：無勝負、相手が星取の対局者でない対局。対局日の古い順（同じ日は登録順）に1局ずつ計算します。</div>
+      <div>・星取のレートは、シーズンが替わると全員1500に戻ります（持ち越しは未実装）。相手のレートを保存しておくと、新星のレートはその影響を受けません。</div>
+      <div>・${ST_PROV}局未満は「暫定」です。数局の差や100点以内の違いは誤差の範囲として読んでください。初期レーティングは仮の値なので、最初の10局ほどは、その調整で動きます。</div>
+    </div>
+  </details>`;
+function renderRating() {
+  const el = $("rating-box"); if (!el) return;
+  if (!Object.keys(games).length) { el.innerHTML = ""; return; }
+  if (!ratingRes) { el.innerHTML = `<p class="note">星取のレーティングを読み込み中…</p>`; return; }
+  const res = ratingRes;
+  let h = `<details class="fold" id="rating-details"${ratingOpen ? " open" : ""}><summary>📈 レーティング（参考値）　<strong>${Math.round(res.rating)}</strong>${res.games < ST_PROV ? "（暫定）" : ""}</summary>`;
+  if (res.games === 0) {
+    h += `<p class="note">レートの計算に使える対局がまだありません（勝ち負けが決まっていて、相手が星取の対局者の対局が対象です）。</p>`;
+  } else {
+    h += `<p class="note" style="margin-bottom:8px">開始時 ${Math.round(res.start)} → 現在 <strong>${Math.round(res.rating)}</strong>（${fmtSigned(res.rating - res.start)}）　計算に使った対局 ${res.games}局`
+      + (res.skipped ? `　数えなかった対局 ${res.skipped}局（相手が星取にいない）` : "")
+      + (res.estimated ? `　相手のレートが推定の対局 ${res.estimated}局` : "") + `</p>`;
+    h += ratingChartSVG(res);
+    // 3か月ごと（1〜3月・4〜6月・7〜9月・10〜12月）にまとめる。碁会は月1回なので、1期間で数局になる
+    const periodOf = d => {
+      const y = d.slice(0, 4), mo = parseInt(d.slice(5, 7), 10);
+      if (!y || isNaN(mo)) return { key: "9999", label: "日付なし" };
+      const q = Math.floor((mo - 1) / 3);
+      return { key: `${y}-${q}`, label: `${y}年${q * 3 + 1}〜${q * 3 + 3}月` };
+    };
+    const byPeriod = {}, labelOf = {};
+    res.steps.forEach(s => { const pd = periodOf(s.date); labelOf[pd.key] = pd.label; (byPeriod[pd.key] = byPeriod[pd.key] || []).push(s); });
+    let prev = res.start;
+    const rows = Object.keys(byPeriod).sort().map(k => {
+      const arr = byPeriod[k], end = arr[arr.length - 1].after, w = arr.filter(s => s.win).length;
+      const row = `<tr><td>${esc(labelOf[k])}</td><td>${arr.length}局（${w}勝${arr.length - w}敗）</td><td>${Math.round(end)}</td><td>${fmtSigned(end - prev)}</td></tr>`;
+      prev = end;
+      return row;
+    }).join("");
+    h += `<div style="overflow-x:auto"><table class="rate-table"><thead><tr><th>期間</th><th>対局</th><th>期末のレート</th><th>前期比</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  h += RATING_HELP_HTML + `</details>`;
+  el.innerHTML = h;
+}
+$("rating-box").addEventListener("toggle", e => { if (e.target.id === "rating-details") ratingOpen = e.target.open; }, true);
+
+// 相手のレートを保存していない対局に、星取の今のレートを保存する（設定タブ）
+function freezeTargets() {
+  return Object.entries(games).filter(([, g]) => (g.result === "win" || g.result === "lose") && typeof g.oppRating !== "number" && effIdx(g) != null);
+}
+function renderFreeze() {
+  const el = $("rating-freeze"); if (!el) return;
+  if (!starLoaded || !Object.keys(games).length) { el.innerHTML = ""; return; }
+  const t = freezeTargets();
+  el.innerHTML = t.length
+    ? `<p class="note">相手のレートを保存していない対局が${t.length}局あります。今は星取の「今のレート」で補っているため、星取で対局が増えたり、シーズンが替わったりすると、過去の対局の評価も動きます。今のレートを保存して固定できます（過去の対局の「その時点のレート」とは、少しずれる点に注意）。</p><button type="button" class="btn-sub" id="freeze-btn">今の相手のレートを保存する（${t.length}局）</button>`
+    : `<p class="note" style="margin:0">レートの計算に使う対局は、すべて相手のレートを保存済みです。</p>`;
+}
+$("rating-freeze").addEventListener("click", e => {
+  if (e.target.id !== "freeze-btn") return;
+  if (!gamesRef) { toast("データベースに接続されていません"); return; }
+  const t = freezeTargets(); if (!t.length) return;
+  if (!confirm(`${t.length}局に、星取の今の相手のレートを保存します。よろしいですか？（バックアップは取りましたか？）`)) return;
+  const upd = {};
+  t.forEach(([id, g]) => { const sr = starRatings[goRaw[effIdx(g)]]; upd[id + "/oppRating"] = Math.round(sr ? sr.rating : ST_BASE); });
+  gamesRef.update(upd);
+  toast(`${t.length}局に相手のレートを保存しました`);
+});
+
+// 初期レーティングの保存
+$("s-init-rating").addEventListener("focus", () => editingInit = true);
+$("s-init-rating").addEventListener("blur", () => editingInit = false);
+$("s-init-save").addEventListener("click", () => {
+  const raw = $("s-init-rating").value.trim();
+  let v = null;
+  if (raw !== "") { v = Number(raw); if (!isFinite(v) || v < 0 || v > 3000) { toast("0〜3000の数字を入力してください"); return; } }
+  if (configRef) configRef.update({ initialRating: v });
+  toast(v === null ? "初期レーティングを1500に戻しました" : "初期レーティングを保存しました");
+});
+
 // ---------- 星取の対局者との紐づけ（設定タブ） ----------
 // opponentIdx がまだ保存されていない対局に、星取の番号を保存する。
 //  ・名前が星取の今の名前と一致するもの → ボタン1つで一括保存
@@ -755,7 +1012,7 @@ $("link-status").addEventListener("click", e => {
   }
 });
 
-function renderAll() { applyName(); renderOppChips(); renderHistory(); renderLinkStatus(); }
+function renderAll() { applyName(); refreshRating(); renderOppChips(); renderHistory(); renderRating(); renderFreeze(); renderLinkStatus(); }
 
 // ---------- Firebase（画面まわりの定義が終わってから接続する） ----------
 resetForm();
@@ -767,9 +1024,15 @@ if (isConfigured) {
     gamesRef = db.ref("shinsei/games");
     configRef = db.ref("shinsei/config");
     gamesRef.on("value", snap => { games = snap.val() || {}; renderAll(); setSync(true); }, () => setSync(false));
-    configRef.on("value", snap => { const c = snap.val() || {}; shinseiName = c.name || ""; renderAll(); }, () => setSync(false));
+    configRef.on("value", snap => { const c = snap.val() || {}; shinseiName = c.name || ""; shinseiInit = typeof c.initialRating === "number" ? c.initialRating : null; renderAll(); }, () => setSync(false));
     // 星取の対局者（読み取りのみ）。番号をそのまま保ち、星取で改名されたら画面にも反映する
-    db.ref("go-league/state/players").on("value", snap => { goRaw = toRawArr(snap.val()); renderAll(); });
+    db.ref("go-league/state").on("value", snap => {
+      const d = snap.val() || {};
+      goRaw = toRawArr(d.players);
+      starRatings = computeStarRatings({ players: goRaw.filter(Boolean), history: Array.isArray(d.history) ? d.history : [] });
+      starLoaded = true;
+      renderAll();
+    });
   } catch (e) { console.error(e); setSync(false); }
 } else {
   $("setup-banner").style.display = "block";
