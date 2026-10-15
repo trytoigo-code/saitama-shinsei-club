@@ -16,7 +16,12 @@
   - GitHub Pages でホスティング（単一 shinsei.html で完結）
   - Firebase Realtime Database（igo.htmlなどと同じプロジェクト）
     保存先：shinsei/games（対局）・shinsei/config（新星の名前）。
-    go-league/state/players は対局相手の名前候補のため読み取りのみ
+    go-league/state/players は読み取りのみ（対局相手の名前候補、および相手の識別）。
+    対局相手は、星取の対局者の並び（players配列）の番号 opponentIdx（0〜）でも記録する。
+    星取の設定タブは「枠に名前を入れる」作りで、改名しても同じ枠のままなので、番号をIDの代わりに使える。
+    表示は常に星取の「今の名前」を引くため、星取で改名しても新星の履歴が切れない。
+    前提：星取で枠を別の人に使い回さない・並べ替えない・途中の枠を削らない。
+    （opponent＝その時点の名前も控えとして残す。星取にいない相手は opponentIdx なしで名前のみ）
 
 【技術構成】
   - バニラJS・外部ライブラリなし・ビルド不要・1ファイル完結
@@ -49,9 +54,15 @@
       無勝負は、最近の流れでは「ー」で表示し（勝敗には数えない）、決着内容には数える。
       （以前あった決着「不明」は選択肢から外した。過去に登録済みの「不明」の対局は、表示・集計には残る）
       （修正は入力タブに内容を読み込んで「更新する」）
-  - ⚙️設定タブ：新星の名前の登録、データエクスポート（JSON）
+  - ⚙️設定タブ：新星の名前の登録、星取の対局者との紐づけ、データエクスポート（JSON）
+      星取の対局者との紐づけ：これまでの対局に opponentIdx を一括で保存する。名前が一致するものは
+      ボタン1つで紐づけ、一致しないもの（改名・表記ゆれ）は相手ごとに星取の対局者を選んで紐づける。
+      星取にいない相手は、そのままでよい（紐づけなくても履歴・成績は今までどおり使える）。
+      紐づけを保存していなくても、名前が星取の今の名前と完全一致する対局は、画面上は紐づいているものとして扱う
 
 【今後の改良候補】
+  - レーティング（参考値）：相手の星取のレートを使って、新星のレートだけを動かす。
+      相手の識別は opponentIdx を使う（登録時点の相手のレートを保存する案Aが有力）
   - 手合いや月ごとの成績の集計
   - 月例碁会ごとの「今月見えた力・前回との違い・次に期待すること」の記録
   - 星取の対局との紐づけ・棋譜URLの登録
@@ -279,6 +290,10 @@
       </div>
       <button class="btn" id="s-save" style="background:#b89752">名前を保存して同期</button>
 
+      <h3 style="margin-top:28px">星取の対局者との紐づけ</h3>
+      <p class="note">対局相手を、星取の対局者の番号で記録します。星取で改名しても、新星の履歴が切れなくなります。星取にいない相手は、紐づけなくてもそのまま使えます。紐づけの前に、下の「JSONでダウンロード」でバックアップを取っておくと安心です。</p>
+      <div id="link-status"></div>
+
       <h3 style="margin-top:28px">データエクスポート</h3>
       <p class="note">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
       <button class="btn" id="export-btn">JSONでダウンロード</button>
@@ -303,7 +318,10 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const pad = n => String(n).padStart(2, "0");
 
-let games = {}, shinseiName = "", goPlayers = [];
+let games = {}, shinseiName = "";
+// 星取の対局者（go-league/state/players）。番号（配列の位置）をそのまま保つ。空き枠は ""
+let goRaw = [];
+let oppIdx = null; // 入力中の対局相手の星取での番号（星取にいない相手・未選択は null）
 let gamesRef = null, configRef = null;
 let editingId = null;
 let resultVal = null; // "win" | "lose" | null
@@ -389,28 +407,62 @@ $("f-margin-unknown").addEventListener("change", () => {
   refreshVisibility();
 });
 
-// ---------- 対局相手：名前ボタン ----------
+// ---------- 対局相手：星取の番号（opponentIdx）と名前ボタン ----------
+// 星取の対局者は、players配列の番号（0〜）をIDの代わりに使う。
+// 画面に出す名前は、常に星取の「今の名前」を引く（星取で改名しても新星の履歴が切れない）。
+function toRawArr(v) {
+  if (Array.isArray(v)) return v.map(x => x || "");
+  if (v && typeof v === "object") {
+    const a = [];
+    Object.keys(v).forEach(k => { const i = Number(k); if (Number.isInteger(i) && i >= 0) a[i] = v[k] || ""; });
+    return Array.from(a, x => x || "");
+  }
+  return [];
+}
+function starName(idx) { return (idx != null && goRaw[idx]) || ""; }
+// その対局の相手の星取での番号。保存済みの opponentIdx を優先し、無ければ名前が今の星取の名前と完全一致するかで補う
+function effIdx(g) {
+  if (g.opponentIdx != null && goRaw[g.opponentIdx]) return g.opponentIdx;
+  const i = g.opponent ? goRaw.indexOf(g.opponent) : -1;
+  return i >= 0 ? i : null;
+}
+function oppName(g) { return starName(effIdx(g)) || g.opponent || ""; }
 function oppCandidates() {
-  const past = Object.values(games).map(g => g.opponent).filter(Boolean);
-  return [...new Set([...goPlayers, ...past])].filter(n => n && n !== shinseiName);
+  const stars = goRaw.map((n, i) => n ? { idx: i, name: n } : null).filter(c => c && c.name !== shinseiName);
+  const starNames = new Set(goRaw.filter(Boolean));
+  const past = [...new Set(Object.values(games).filter(g => effIdx(g) == null).map(g => g.opponent).filter(Boolean))]
+    .filter(n => !starNames.has(n) && n !== shinseiName).map(n => ({ idx: null, name: n }));
+  return [...stars, ...past];
 }
 function renderOppChips() {
   const cur = $("f-opp").value.trim();
-  $("opp-chips").innerHTML = oppCandidates().map(n => `<button type="button" class="chip${cur === n ? " sel" : ""}" data-name="${esc(n)}">${esc(n)}</button>`).join("");
+  $("opp-chips").innerHTML = oppCandidates().map(c => {
+    const sel = c.idx != null ? oppIdx === c.idx : (oppIdx == null && cur === c.name);
+    return `<button type="button" class="chip${sel ? " sel" : ""}" data-name="${esc(c.name)}" data-idx="${c.idx == null ? "" : c.idx}">${esc(c.name)}</button>`;
+  }).join("");
 }
 $("opp-chips").addEventListener("click", e => {
   const c = e.target.closest(".chip"); if (!c) return;
-  $("f-opp").value = $("f-opp").value.trim() === c.dataset.name ? "" : c.dataset.name; // もう一度押すと取り消し
+  const idx = c.dataset.idx === "" ? null : Number(c.dataset.idx);
+  const selected = idx != null ? oppIdx === idx : (oppIdx == null && $("f-opp").value.trim() === c.dataset.name);
+  if (selected) { $("f-opp").value = ""; oppIdx = null; } // もう一度押すと取り消し
+  else { $("f-opp").value = c.dataset.name; oppIdx = idx; }
   renderOppChips();
 });
-$("f-opp").addEventListener("input", renderOppChips);
+// 手入力した名前が星取の今の名前と完全一致すれば、その番号として扱う
+$("f-opp").addEventListener("input", () => {
+  const v = $("f-opp").value.trim();
+  const i = v ? goRaw.indexOf(v) : -1;
+  oppIdx = i >= 0 ? i : null;
+  renderOppChips();
+});
 
 // ---------- フォームの初期化・読み込み ----------
 function todayISO() { const t = new Date(); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; }
 function resetForm() {
   editingId = null;
   $("f-date").value = todayISO();
-  $("f-opp").value = "";
+  $("f-opp").value = ""; oppIdx = null;
   $("f-teai").value = "互先"; $("teai-pair").textContent = "互先";
   $("f-type").value = "chuoshi";
   $("f-margin").value = ""; $("f-margin").disabled = false; $("f-margin-unknown").checked = false;
@@ -428,7 +480,8 @@ function loadForEdit(id) {
   const g = games[id]; if (!g) return;
   editingId = id;
   $("f-date").value = g.date || todayISO();
-  $("f-opp").value = g.opponent || "";
+  oppIdx = effIdx(g);
+  $("f-opp").value = oppName(g);
   $("f-teai").value = g.teai || "互先"; $("teai-pair").textContent = TEAI_PAIR[g.teai || "互先"] || "互先";
   $("f-type").value = g.type === "fumei" ? "hantei" : (g.type || "chuoshi"); // 以前の「不明」は選択肢から外したため、修正時は「判定」を仮に選ぶ（保存前に確認してください）
   const unknown = g.type === "moku" && !g.margin;
@@ -476,7 +529,7 @@ $("f-submit").addEventListener("click", () => {
   const k1 = $("f-kifu1").value.trim(), k2 = $("f-kifu2").value.trim();
   const okUrl = u => /^https?:\/\//.test(u);
   if ((k1 && !okUrl(k1)) || (k2 && !okUrl(k2))) { alert("棋譜URLは http〜 で始まるものを入力してください"); return; }
-  const data = { date, opponent: opp, teai, result: resultVal, type, margin, band, kifuUrl: k1 || null, kifuUrl2: k2 || null, memo: $("f-memo").value.trim() || null };
+  const data = { date, opponent: (oppIdx != null && goRaw[oppIdx]) || opp, opponentIdx: oppIdx, teai, result: resultVal, type, margin, band, kifuUrl: k1 || null, kifuUrl2: k2 || null, memo: $("f-memo").value.trim() || null };
   if (!gamesRef) { alert("データベースに接続されていません"); return; }
   if (editingId) { gamesRef.child(editingId).update({ ...data, editedAt: Date.now() }); toast("更新しました"); }
   else { gamesRef.push({ ...data, at: Date.now() }); toast("対局を登録しました"); }
@@ -485,7 +538,9 @@ $("f-submit").addEventListener("click", () => {
 });
 
 // ---------- 履歴 ----------
-let oppFilter = null; // 履歴の対局相手の絞り込み（null＝すべて）
+let oppFilter = null; // 履歴の対局相手の絞り込み（null＝すべて）。キーは星取の相手なら "i番号"、それ以外は "n名前"
+const oppKey = g => { const i = effIdx(g); return i != null ? "i" + i : "n" + (g.opponent || ""); };
+const oppLabel = k => k[0] === "i" ? starName(Number(k.slice(1))) : k.slice(1);
 const TYPE_LABEL = { chuoshi: "中押し", moku: "目数差", jikan: "時間切れ", jigo: "ジコ（黒勝ち）", hantei: "判定", fumei: "不明" };
 const BAND_LABEL = { within10: "10目差以内", over10: "10目差以上", unknown: "10目差の判別なし" };
 function fmtDate(iso) { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}/${parseInt(m)}/${parseInt(d)}`; }
@@ -545,17 +600,17 @@ function renderHistory() {
   const allEntries = Object.entries(games).sort((a, b) => (b[1].date || "").localeCompare(a[1].date || "") || (b[1].at || 0) - (a[1].at || 0));
   // 対局相手別のボタン（対局数の多い順）。絞り込み中の相手が消えていたら解除する
   const oppCount = {};
-  allEntries.forEach(([, g]) => { if (g.opponent) oppCount[g.opponent] = (oppCount[g.opponent] || 0) + 1; });
+  allEntries.forEach(([, g]) => { if (oppName(g)) { const k = oppKey(g); oppCount[k] = (oppCount[k] || 0) + 1; } });
   if (oppFilter && !oppCount[oppFilter]) oppFilter = null;
-  const oppNames = Object.keys(oppCount).sort((a, b) => oppCount[b] - oppCount[a] || a.localeCompare(b, "ja"));
+  const oppNames = Object.keys(oppCount).sort((a, b) => oppCount[b] - oppCount[a] || oppLabel(a).localeCompare(oppLabel(b), "ja"));
   $("hist-opp-chips").innerHTML = oppNames.length
     ? `<div class="chips" style="margin:0 0 6px"><button type="button" class="chip${!oppFilter ? " sel" : ""}" data-opp="">すべて</button>`
       + `<button type="button" class="chip" data-action="kifu-only" style="${kifuOnly ? "background:#27ae60;border-color:#27ae60;color:#fff" : ""}">📄棋譜ありのみ</button></div>`
-      + `<div class="chips" style="margin:0">` + oppNames.map(n => `<button type="button" class="chip${oppFilter === n ? " sel" : ""}" data-opp="${esc(n)}">${esc(n)}（${oppCount[n]}）</button>`).join("") + `</div>`
+      + `<div class="chips" style="margin:0">` + oppNames.map(k => `<button type="button" class="chip${oppFilter === k ? " sel" : ""}" data-opp="${esc(k)}">${esc(oppLabel(k))}（${oppCount[k]}）</button>`).join("") + `</div>`
     : "";
   let entries = allEntries;
   if (kifuOnly) entries = entries.filter(([, g]) => g.kifuUrl || g.kifuUrl2);
-  if (oppFilter) entries = entries.filter(([, g]) => g.opponent === oppFilter);
+  if (oppFilter) entries = entries.filter(([, g]) => oppKey(g) === oppFilter);
   $("summary").innerHTML = ""; $("hist-sections").innerHTML = "";
   if (!allEntries.length) {
     $("list").innerHTML = `<p style="color:#999;font-size:0.88rem">まだ対局がありません。📝入力タブから最初の1局を記録しましょう。</p>`;
@@ -567,7 +622,7 @@ function renderHistory() {
   }
   const { w, l } = wlOf(entries);
   const m = entries.filter(([, g]) => g.result === "mushoubu").length;
-  $("summary").innerHTML = `<div class="summary">${oppFilter ? esc(oppFilter) + "さんとの対戦" : "通算"} <strong>${w + l}局</strong>　${w}勝 ${l}敗${w + l ? `（勝率 ${(w / (w + l)).toFixed(2)}）` : ""}${m ? `　無勝負 ${m}局` : ""}</div>`;
+  $("summary").innerHTML = `<div class="summary">${oppFilter ? esc(oppLabel(oppFilter)) + "さんとの対戦" : "通算"} <strong>${w + l}局</strong>　${w}勝 ${l}敗${w + l ? `（勝率 ${(w / (w + l)).toFixed(2)}）` : ""}${m ? `　無勝負 ${m}局` : ""}</div>`;
 
   // igo.htmlの履歴タブに近い構成：最近の流れ／決着内容（折りたたみ）／対局履歴
   let sec = secHead("最近の流れ");
@@ -593,7 +648,7 @@ function renderHistory() {
       <div class="game-top">
         <div>
           <div class="game-date">${fmtDate(g.date)}</div>
-          <div class="game-vs">${win ? "👑 " : ""}<strong>${esc(nm())}</strong>${tm(mine)}　vs　${lose ? "👑 " : ""}${esc(g.opponent)}${tm(theirs)}</div>
+          <div class="game-vs">${win ? "👑 " : ""}<strong>${esc(nm())}</strong>${tm(mine)}　vs　${lose ? "👑 " : ""}${esc(oppName(g))}${tm(theirs)}</div>
           <div style="margin-top:4px">${badges}${kifu}</div>
         </div>
         <div class="game-btns"><button class="link-sm" data-act="edit" data-id="${id}">修正</button><button class="link-sm" data-act="del" data-id="${id}">削除</button></div>
@@ -649,7 +704,58 @@ function applyName() {
   document.querySelector("#teai-label").textContent = `${nm()}の手合い`;
   if (!editingName) $("s-name").value = shinseiName;
 }
-function renderAll() { applyName(); renderOppChips(); renderHistory(); }
+// ---------- 星取の対局者との紐づけ（設定タブ） ----------
+// opponentIdx がまだ保存されていない対局に、星取の番号を保存する。
+//  ・名前が星取の今の名前と一致するもの → ボタン1つで一括保存
+//  ・一致しないもの（改名・表記ゆれ・星取にいない人）→ 相手の名前ごとに、星取の対局者を選んで保存
+function renderLinkStatus() {
+  const el = $("link-status"); if (!el) return;
+  if (el.contains(document.activeElement) && document.activeElement.tagName === "SELECT") return; // 選択中は作り直さない
+  const entries = Object.entries(games);
+  if (!entries.length) { el.innerHTML = `<p class="note" style="margin:0">まだ対局がありません。</p>`; return; }
+  if (!goRaw.some(Boolean)) { el.innerHTML = `<p class="note" style="margin:0">星取の対局者を読み込めていません。</p>`; return; }
+  const saved = entries.filter(([, g]) => g.opponentIdx != null && goRaw[g.opponentIdx]).length;
+  const pending = entries.filter(([, g]) => (g.opponentIdx == null || !goRaw[g.opponentIdx]) && g.opponent && goRaw.indexOf(g.opponent) >= 0);
+  const pendingIds = new Set(pending.map(([id]) => id));
+  const unmatchedNames = [...new Set(entries.filter(([id, g]) => !pendingIds.has(id) && (g.opponentIdx == null || !goRaw[g.opponentIdx]) && g.opponent).map(([, g]) => g.opponent))];
+  const opts = `<option value="">（選んでください）</option>` + goRaw.map((n, i) => n ? `<option value="${i}">${esc(n)}</option>` : "").join("");
+  let h = `<div class="summary">全${entries.length}局　紐づけ済み <strong>${saved}局</strong>　名前が一致（未保存） ${pending.length}局　一致しない相手 ${unmatchedNames.length}人</div>`;
+  if (pending.length) h += `<button class="btn" id="link-auto" style="background:#b89752;margin-bottom:12px">名前が一致する${pending.length}局を紐づける</button>`;
+  if (unmatchedNames.length) {
+    h += `<p class="note">星取の名前と一致しない相手です。改名や表記ゆれの場合は、星取の対局者を選んで紐づけてください。星取にいない相手は、そのままで構いません。</p>`;
+    h += unmatchedNames.map(n => {
+      const cnt = entries.filter(([, g]) => g.opponent === n && (g.opponentIdx == null || !goRaw[g.opponentIdx])).length;
+      return `<div class="fg"><label>${esc(n)}（${cnt}局）</label><select class="link-sel" data-name="${esc(n)}">${opts}</select><button type="button" class="btn-sub link-one" data-name="${esc(n)}">この相手を紐づける</button></div>`;
+    }).join("");
+  }
+  if (!pending.length && !unmatchedNames.length) h += `<p class="note" style="margin:0">すべての対局が紐づいています。</p>`;
+  el.innerHTML = h;
+}
+$("link-status").addEventListener("click", e => {
+  if (!gamesRef) { toast("データベースに接続されていません"); return; }
+  if (e.target.id === "link-auto") {
+    const upd = {}; let n = 0;
+    Object.entries(games).forEach(([id, g]) => {
+      if ((g.opponentIdx == null || !goRaw[g.opponentIdx]) && g.opponent && goRaw.indexOf(g.opponent) >= 0) { upd[id + "/opponentIdx"] = goRaw.indexOf(g.opponent); n++; }
+    });
+    if (!n) return;
+    gamesRef.update(upd);
+    toast(`${n}局を紐づけました`);
+  } else if (e.target.classList.contains("link-one")) {
+    const name = e.target.dataset.name;
+    const sel = [...document.querySelectorAll(".link-sel")].find(s => s.dataset.name === name);
+    if (!sel || sel.value === "") { toast("星取の対局者を選んでください"); return; }
+    const idx = Number(sel.value), upd = {}; let n = 0;
+    Object.entries(games).forEach(([id, g]) => {
+      if (g.opponent === name && (g.opponentIdx == null || !goRaw[g.opponentIdx])) { upd[id + "/opponentIdx"] = idx; upd[id + "/opponent"] = goRaw[idx]; n++; }
+    });
+    if (!n) return;
+    gamesRef.update(upd);
+    toast(`${name}の${n}局を、星取の${goRaw[idx]}さんに紐づけました`);
+  }
+});
+
+function renderAll() { applyName(); renderOppChips(); renderHistory(); renderLinkStatus(); }
 
 // ---------- Firebase（画面まわりの定義が終わってから接続する） ----------
 resetForm();
@@ -662,11 +768,8 @@ if (isConfigured) {
     configRef = db.ref("shinsei/config");
     gamesRef.on("value", snap => { games = snap.val() || {}; renderAll(); setSync(true); }, () => setSync(false));
     configRef.on("value", snap => { const c = snap.val() || {}; shinseiName = c.name || ""; renderAll(); }, () => setSync(false));
-    // 対局相手の名前候補（星取の対局者名。読み取りのみ）
-    db.ref("go-league/state/players").once("value", snap => {
-      const arr = snap.val();
-      if (Array.isArray(arr)) { goPlayers = arr.filter(Boolean); renderOppChips(); }
-    });
+    // 星取の対局者（読み取りのみ）。番号をそのまま保ち、星取で改名されたら画面にも反映する
+    db.ref("go-league/state/players").on("value", snap => { goRaw = toRawArr(snap.val()); renderAll(); });
   } catch (e) { console.error(e); setSync(false); }
 } else {
   $("setup-banner").style.display = "block";
