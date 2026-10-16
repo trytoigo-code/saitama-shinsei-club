@@ -55,7 +55,7 @@
       （以前あった決着「不明」は選択肢から外した。過去に登録済みの「不明」の対局は、表示・集計には残る）
       （修正は入力タブに内容を読み込んで「更新する」）
   - レーティング（参考値）：新星のレートだけを動かす（相手のレートは動かさない）。星取（igo.html）と
-      同じElo方式。履歴タブに折りたたみで、現在のレート・推移グラフ・3か月ごとの表・仕組みの説明を表示し、
+      同じElo方式。履歴タブに折りたたみで、現在のレート・推移グラフ（各点のレートを数字で表示）・3か月ごとの表・仕組みの説明を表示し、
       各対局カードに「レート +12 → 1512」を表示する。
       表は3か月ごと（1〜3月・4〜6月・7〜9月・10〜12月。碁会が月1回のため）にまとめる。保存はせず、表示のたびに全履歴から計算し直す。
       ・相手のレート：対局の登録時点の星取のレートを oppRating として保存して使う（シーズンが替わっても、
@@ -863,18 +863,33 @@ function rateLineHTML(id) {
 function ratingChartSVG(res) {
   const pts = [res.start, ...res.steps.map(s => s.after)];
   if (pts.length < 2) return "";
-  const W = 300, H = 100, padL = 6, padR = 6, padT = 12, padB = 12;
+  const W = 300, H = 120, padL = 16, padR = 16, padT = 22, padB = 22;
   let lo = Math.min(...pts), hi = Math.max(...pts);
   if (hi - lo < 40) { const mid = (hi + lo) / 2; lo = mid - 20; hi = mid + 20; }
   const x = i => padL + (W - padL - padR) * i / (pts.length - 1);
   const y = v => padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo));
   const line = pts.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const last = pts.length - 1;
+  // 各点のレートを数字で表示する。点が多く（14点以上）て重なるときは、開始・最新・最高・最低だけにする
+  const showAll = pts.length <= 13;
+  const iMax = pts.indexOf(Math.max(...pts)), iMin = pts.indexOf(Math.min(...pts));
+  const show = i => showAll || i === 0 || i === last || i === iMax || i === iMin;
+  // 谷（前後より低い点）は点の下に、それ以外は点の上に数字を置く（線と重なりにくくするため）
+  const below = i => {
+    const nb = [pts[i - 1], pts[i + 1]].filter(v => v !== undefined);
+    return nb.every(v => v > pts[i]);
+  };
+  let dots = "", labels = "";
+  pts.forEach((v, i) => {
+    const cx = x(i).toFixed(1), cy = y(v).toFixed(1);
+    dots += `<circle cx="${cx}" cy="${cy}" r="${i === last ? 3.5 : 2.5}" fill="${i === last ? "#2c3e50" : i === 0 ? "#999" : "#b89752"}"/>`;
+    if (show(i)) {
+      const ty = below(i) ? y(v) + 13 : y(v) - 6;
+      labels += `<text x="${cx}" y="${ty.toFixed(1)}" font-size="9" text-anchor="middle" fill="${i === last ? "#2c3e50" : "#777"}"${i === last ? ' font-weight="bold"' : ""}>${Math.round(v)}</text>`;
+    }
+  });
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;background:#faf9f5;border:1px solid #e8e4da;border-radius:6px">`
-    + `<polyline points="${line}" fill="none" stroke="#b89752" stroke-width="2"/>`
-    + `<circle cx="${x(0).toFixed(1)}" cy="${y(pts[0]).toFixed(1)}" r="2.5" fill="#999"/>`
-    + `<circle cx="${x(last).toFixed(1)}" cy="${y(pts[last]).toFixed(1)}" r="3.5" fill="#2c3e50"/>`
-    + `<text x="${padL}" y="9" font-size="9" fill="#999">${Math.round(hi)}</text><text x="${padL}" y="${H - 2}" font-size="9" fill="#999">${Math.round(lo)}</text></svg>`;
+    + `<polyline points="${line}" fill="none" stroke="#b89752" stroke-width="2"/>${dots}${labels}</svg>`;
 }
 let ratingOpen = false;
 const RATING_HELP_HTML = `
@@ -885,7 +900,7 @@ const RATING_HELP_HTML = `
       <div>・勝つ確率の予想（差100点で約64%、200点で約76%）より意外な結果ほど、大きく動きます。手合いは強さの差を補うものなので、その分を換算して計算します。</div>
       <div>・手合いの換算は、互先${SH_HANDICAP_ELO[0]}／先${SH_HANDICAP_ELO[1]}／2子${SH_HANDICAP_ELO[2]}／3子${SH_HANDICAP_ELO[3]}／4子${SH_HANDICAP_ELO[4]}点（星取と同じ）。5子以降は1子ごとに100点ずつ延ばした仮置きです（5子${SH_HANDICAP_ELO[5]}〜9子${SH_HANDICAP_ELO[9]}点）。</div>
       <div>・1局で動く幅は、最初の${ST_K_SWITCH}局までは最大${ST_K_NEW}点、それ以降は最大${ST_K_SETTLED}点です。</div>
-      <div>・相手のレートは、対局を登録した時点の星取のレートを保存して使います。保存していない対局は、星取の今のレートで補います（推定）。</div>
+      <div>・相手のレートは、対局を登録した時点の星取のレートを保存して使います。この機能を入れる前に登録した対局は、星取の今のレートで補います（推定）。</div>
       <div>・数えない対局：無勝負、相手が星取の対局者でない対局。対局日の古い順（同じ日は登録順）に1局ずつ計算します。</div>
       <div>・星取のレートは、シーズンが替わると全員1500に戻ります（持ち越しは未実装）。相手のレートを保存しておくと、新星のレートはその影響を受けません。</div>
       <div>・${ST_PROV}局未満は「暫定」です。数局の差や100点以内の違いは誤差の範囲として読んでください。初期レーティングは仮の値なので、最初の10局ほどは、その調整で動きます。</div>
