@@ -61,7 +61,8 @@
       ・相手のレート：対局の登録時点の星取のレートを oppRating として保存して使う（シーズンが替わっても、
         相手が上達しても、過去の対局の評価が動かないようにするため）。oppRating が無い対局は、星取の
         今のレートで補い（推定）、設定タブのボタンで一括して保存できる。
-      ・星取のレートは、igo.html/sogo.html と同じ計算をこのファイルに複製して求める
+      ・星取のレートは、igo.html/sogo.html と同じ計算をこのファイルに複製して求める（シーズンをまたぐ持ち越し＝
+        go-league/state/startRatings も読んで、同じ開始値から計算する）
         （手合い差の重みは標準×1。igo.html側が変わったらここも更新する）。
       ・手合いの換算：互先0／先50／2子150／3子250／4子350（星取と同じ）。5子以降は1子ごとに100点延ばした
         仮置き（5子450〜9子850）。互白・互黒は互先と同じ0。
@@ -789,7 +790,9 @@ function stDateVal(d) {
 function computeStarRatings(st) {
   const names = st.players || [];
   const r = {}, n = {};
-  names.forEach(p => { r[p] = ST_BASE; n[p] = 0; });
+  // 前のシーズンの終わりのレートと対局数から始める（igo.htmlの state.startRatings。無い人は1500・0局）
+  const sr = st.startRatings || {};
+  names.forEach(p => { const s0 = sr[p]; r[p] = s0 ? s0.rating : ST_BASE; n[p] = s0 ? (s0.games || 0) : 0; });
   const expect = d => 1 / (1 + Math.pow(10, -d / 400));
   const kOf = p => n[p] < ST_K_SWITCH ? ST_K_NEW : ST_K_SETTLED;
   [...(st.history || [])].reverse().sort((a, b) => stDateVal(a.date) - stDateVal(b.date)).forEach(m => {
@@ -807,7 +810,7 @@ function computeStarRatings(st) {
     n[w]++; n[l]++;
   });
   const out = {};
-  names.forEach(p => { if (n[p] > 0) out[p] = { rating: r[p], games: n[p], provisional: n[p] < ST_PROV }; });
+  names.forEach(p => { if (n[p] > 0 || sr[p]) out[p] = { rating: r[p], games: n[p], provisional: n[p] < ST_PROV }; });
   return out;
 }
 
@@ -1044,7 +1047,7 @@ if (isConfigured) {
     db.ref("go-league/state").on("value", snap => {
       const d = snap.val() || {};
       goRaw = toRawArr(d.players);
-      starRatings = computeStarRatings({ players: goRaw.filter(Boolean), history: Array.isArray(d.history) ? d.history : [] });
+      starRatings = computeStarRatings({ players: goRaw.filter(Boolean), history: Array.isArray(d.history) ? d.history : [], startRatings: (d.startRatings && typeof d.startRatings === "object") ? d.startRatings : {} });
       starLoaded = true;
       renderAll();
     });
