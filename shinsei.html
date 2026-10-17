@@ -23,6 +23,9 @@
     前提：星取で枠を別の人に使い回さない・並べ替えない・途中の枠を削らない。
     （opponent＝その時点の名前も控えとして残す。星取にいない相手は opponentIdx なしで名前のみ）
 
+  - 表示回数（ヘッダーに常時表示。igo.html と同じ仕組みで、同じ端末では1日1回までカウント。
+      Firebase pageviews/shinsei に保存。参考値）
+
 【技術構成】
   - バニラJS・外部ライブラリなし・ビルド不要・1ファイル完結
   - 配色・部品・合言葉認証は kifu.html / igo.html に合わせている
@@ -104,6 +107,7 @@
   #sync-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 5px; }
   #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
   #sync-label { font-size: 0.7rem; color: #aed6f1; }
+  #pageview-row { font-size: 0.68rem; color: #8ba9c2; margin-top: 3px; }
 
   #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; position: sticky; top: 0; z-index: 100; }
   .tab-btn { flex: 1; padding: 11px 4px; border: none; background: none; font-size: 0.85rem; font-weight: bold; color: #777; cursor: pointer; border-bottom: 3px solid transparent; font-family: inherit; }
@@ -202,6 +206,7 @@
   <div id="header">
     <h1>⭐ 新星の対局記録</h1>
     <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
+    <div id="pageview-row">👁 <span id="pageview-count">－</span>回表示</div>
   </div>
   <div id="nav">
     <button class="tab-btn active" data-tab="input">📝入力</button>
@@ -1056,6 +1061,29 @@ if (isConfigured) {
   $("setup-banner").style.display = "block";
   setSync(false);
 }
+
+// ---------- 表示回数 ----------
+// igo.html と同じ仕組み。個人アカウントがないため「誰が見たか」は分からず、
+// 「このアプリが開かれた回数」の目安。同じ端末では1日1回までしかカウントされない
+// （localStorageに最後にカウントした日付を保存して判定）。Firebase pageviews/shinsei に保存。
+(function() {
+  if (!isConfigured) return;
+  try {
+    const pvRef = firebase.database().ref("pageviews/shinsei");
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    if (localStorage.getItem("pageview_date_shinsei") !== todayStr) {
+      pvRef.transaction(cur => (cur || 0) + 1, (error, committed) => {
+        if (error) { console.error("表示回数の記録に失敗しました:", error); return; }
+        if (committed) localStorage.setItem("pageview_date_shinsei", todayStr);
+      });
+    }
+    pvRef.on("value", snap => {
+      const el = document.getElementById("pageview-count");
+      if (el) el.textContent = snap.val() || 0;
+    });
+  } catch (e) { console.error(e); }
+})();
 </script>
 </body>
 </html>
