@@ -39,7 +39,7 @@
     棋譜を削除すると、それより新しい棋譜の番号は1つずつ繰り上がる）
   - 対局日（登録時は必須：日付を選ぶか「不明」にチェック。保存は playDate="YYYY-MM-DD" か
     playDateUnknown=true。対局日欄が出来る前の投稿は未入力として表示し、修正時も空のまま保存できる）
-  - 棋譜の登録（棋譜URLを2つまで：①つぶや棋譜・②棋譜見てね。どちらか一方だけでも可。
+  - 棋譜の登録（棋譜URLを3つまで：①つぶや棋譜・②棋譜見てね・③下地会ブログ（下地会ブログに掲載された棋譜用）。どれか1つだけでも可。
     黒番・白番・登録者・登録者コメント）。星取と同じく①は緑・②は青のボタンで表示
   - 一覧表示（新しい順）。①②のボタンで新規タブに開く
   - 感想の追加（名前＋本文。1つの棋譜に何人でも書ける）
@@ -118,6 +118,7 @@
   .kno { font-size: 0.74rem; color: #b89752; font-weight: bold; margin-right: 6px; }
   .lnk { font-size: 0.78rem; margin-top: 6px; }
   .open-link.b2 { background: #2f6fd0; margin-left: 6px; }
+  .open-link.b3 { background: #16a085; margin-left: 6px; }
   .open-link { display: inline-block; margin-top: 8px; background: #27ae60; color: #fff; text-decoration: none; font-size: 0.85rem; font-weight: bold; padding: 7px 14px; border-radius: 16px; }
   .poster-comment { margin-top: 8px; font-size: 0.86rem; color: #555; background: #faf8f0; border-left: 3px solid #b89752; padding: 6px 10px; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
   .imp-title { font-size: 0.78rem; color: #b89752; font-weight: bold; margin: 12px 0 4px; }
@@ -158,7 +159,8 @@
     <div class="form-box" id="form">
       <div class="fg"><label>①つぶや棋譜URL</label><input type="url" id="f-url" placeholder="つぶや棋譜のリンクがあれば貼り付け"><p class="lnk"><a href="https://igo-kids.com/pk/post-kifu.php" target="_blank" rel="noopener noreferrer" style="color:#27ae60;font-weight:bold">つぶや棋譜を開く（棋譜を登録してURLを取得）</a></p></div>
       <div class="fg"><label>②棋譜見てねURL</label><input type="url" id="f-url2" placeholder="棋譜見てねのリンクがあれば貼り付け"><p class="lnk"><a href="https://gokifuai.com/kifu" target="_blank" rel="noopener noreferrer" style="color:#2f6fd0;font-weight:bold">棋譜見てねを開く（棋譜を登録してURLを取得）</a></p></div>
-      <p class="lnk" style="margin:-4px 0 10px">※ ①②のどちらか一方だけでも登録できます。</p>
+      <div class="fg"><label>③下地会ブログURL</label><input type="url" id="f-url3" placeholder="下地会ブログに掲載された棋譜のURLがあれば貼り付け"></div>
+      <p class="lnk" style="margin:-4px 0 10px">※ ①②③のどれか1つだけでも登録できます。</p>
       <div class="row2">
         <div class="fg"><label>⚫黒番</label><input id="f-black" placeholder="対局者"></div>
         <div class="fg"><label>⚪白番</label><input id="f-white" placeholder="対局者"></div>
@@ -274,7 +276,8 @@ function render() {
     const vs = (p.black || p.white) ? `⚫${esc(p.black || "？")}　vs　⚪${esc(p.white || "？")}` : "対局者未入力";
     const ok = u => /^https?:\/\//.test(u || "");
     const links = (ok(p.url) ? `<a class="open-link" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">📄 棋譜①（つぶや棋譜）</a>` : "")
-                + (ok(p.url2) ? `<a class="open-link b2" href="${esc(p.url2)}" target="_blank" rel="noopener noreferrer">📄 棋譜②（棋譜見てね）</a>` : "");
+                + (ok(p.url2) ? `<a class="open-link b2" href="${esc(p.url2)}" target="_blank" rel="noopener noreferrer">📄 棋譜②（棋譜見てね）</a>` : "")
+                + (ok(p.url3) ? `<a class="open-link b3" href="${esc(p.url3)}" target="_blank" rel="noopener noreferrer">📄 下地会ブログ</a>` : "");
     return `<div class="card${folded ? " folded" : ""}">
       <div class="card-top">
         <div${foldable ? ` class="foldable" data-act="fold" data-id="${id}"` : ""}><div class="players">${foldable ? `<span class="fold-ind">${folded ? "▶" : "▼"}</span>` : ""}<span class="kno">No.${seq[id]}</span>${vs}</div><div class="meta">📅 対局日：${pdText(p)}</div><div class="meta">${esc(p.poster || "登録者不明")}さんが共有 ・ 登録${fmtDate(p.at)}${fmtDate(lastUpdated(p)) !== fmtDate(p.at) ? ` ・ 更新${fmtDate(lastUpdated(p))}` : ""} ・ 💬${imps.length}</div></div>
@@ -285,6 +288,7 @@ function render() {
       <div class="imp-form edit-form" data-id="${id}">
         <div class="fg"><label>①つぶや棋譜URL</label><input type="url" class="e-url" value="${esc(p.url)}"></div>
         <div class="fg"><label>②棋譜見てねURL</label><input type="url" class="e-url2" value="${esc(p.url2)}"></div>
+        <div class="fg"><label>③下地会ブログURL</label><input type="url" class="e-url3" value="${esc(p.url3)}"></div>
         <div class="row2">
           <div class="fg"><label>⚫黒番</label><input class="e-black" value="${esc(p.black)}"></div>
           <div class="fg"><label>⚪白番</label><input class="e-white" value="${esc(p.white)}"></div>
@@ -330,14 +334,14 @@ $("list").addEventListener("click", e => {
   else if (act === "saveedit") {
     const f = document.querySelector(`.edit-form[data-id="${id}"]`);
     const v = c => f.querySelector(c).value.trim();
-    const url = v(".e-url"), url2 = v(".e-url2"), poster = v(".e-poster");
+    const url = v(".e-url"), url2 = v(".e-url2"), url3 = v(".e-url3"), poster = v(".e-poster");
     const ok = u => /^https?:\/\//.test(u);
-    if (!url && !url2) { alert("①か②、どちらかの棋譜URLを入力してください"); return; }
-    if ((url && !ok(url)) || (url2 && !ok(url2))) { alert("URLは http〜 で始まるものを入力してください"); return; }
+    if (!url && !url2 && !url3) { alert("①②③のどれかの棋譜URLを入力してください"); return; }
+    if ((url && !ok(url)) || (url2 && !ok(url2)) || (url3 && !ok(url3))) { alert("URLは http〜 で始まるものを入力してください"); return; }
     if (!poster) { alert("登録者の名前を入力してください"); return; }
     f.classList.remove("open");
     const punk = f.querySelector(".punk").checked;
-    postsRef.child(id).update({ editedAt: Date.now(), playDate: punk ? null : (v(".e-pdate") || null), playDateUnknown: punk ? true : null, url: url || null, url2: url2 || null, poster, black: v(".e-black") || null, white: v(".e-white") || null, comment: v(".e-comment") || null });
+    postsRef.child(id).update({ editedAt: Date.now(), playDate: punk ? null : (v(".e-pdate") || null), playDateUnknown: punk ? true : null, url: url || null, url2: url2 || null, url3: url3 || null, poster, black: v(".e-black") || null, white: v(".e-white") || null, comment: v(".e-comment") || null });
     render();
     toast("更新しました");
   }
@@ -390,22 +394,22 @@ $("add-btn").addEventListener("click", () => {
 });
 $("f-cancel").addEventListener("click", () => $("form").classList.remove("open"));
 $("f-submit").addEventListener("click", () => {
-  const url = $("f-url").value.trim(), url2 = $("f-url2").value.trim(), poster = $("f-poster").value.trim();
+  const url = $("f-url").value.trim(), url2 = $("f-url2").value.trim(), url3 = $("f-url3").value.trim(), poster = $("f-poster").value.trim();
   const ok = u => /^https?:\/\//.test(u);
-  if (!url && !url2) { alert("①か②、どちらかの棋譜URLを入力してください"); return; }
-  if ((url && !ok(url)) || (url2 && !ok(url2))) { alert("URLは http〜 で始まるものを入力してください"); return; }
+  if (!url && !url2 && !url3) { alert("①②③のどれかの棋譜URLを入力してください"); return; }
+  if ((url && !ok(url)) || (url2 && !ok(url2)) || (url3 && !ok(url3))) { alert("URLは http〜 で始まるものを入力してください"); return; }
   if (!poster) { alert("登録者の名前を入力してください"); return; }
   const pdate = $("f-pdate").value, punk = $("f-punk").checked;
   if (!pdate && !punk) { alert("対局日を入力するか、「不明」にチェックしてください"); return; }
   localStorage.setItem("kifu_name", poster);
   if (postsRef) postsRef.push({
-    url: url || null, url2: url2 || null, poster, at: Date.now(),
+    url: url || null, url2: url2 || null, url3: url3 || null, poster, at: Date.now(),
     playDate: punk ? null : pdate, playDateUnknown: punk ? true : null,
     black: $("f-black").value.trim() || null,
     white: $("f-white").value.trim() || null,
     comment: $("f-comment").value.trim() || null
   });
-  ["f-url","f-url2","f-black","f-white","f-comment","f-pdate"].forEach(i => $(i).value = "");
+  ["f-url","f-url2","f-url3","f-black","f-white","f-comment","f-pdate"].forEach(i => $(i).value = "");
   $("f-punk").checked = false; syncPdates();
   $("form").classList.remove("open");
   refreshChips();
