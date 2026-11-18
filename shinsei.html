@@ -801,7 +801,7 @@ function computeStarRatings(st) {
   const expect = d => 1 / (1 + Math.pow(10, -d / 400));
   const kOf = p => n[p] < ST_K_SWITCH ? ST_K_NEW : ST_K_SETTLED;
   [...(st.history || [])].reverse().sort((a, b) => stDateVal(a.date) - stDateVal(b.date)).forEach(m => {
-    if (m.shidou || m.type === "mushoubu") return;
+    if (m.shidou || m.rakuban || m.type === "mushoubu") return; // 指導対局・楽番・無勝負は数えない（igo.htmlと同じ）
     let w, l;
     if (m.type === "jigo") { w = stJigoWinner(m); if (!w) return; l = w === m.p1 ? m.p2 : m.p1; }
     else { w = m.winner; l = m.loser; }
